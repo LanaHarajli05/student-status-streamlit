@@ -1,111 +1,111 @@
+import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-import streamlit as st
-from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import LabelEncoder
-from sklearn.metrics import classification_report, accuracy_score, precision_score, recall_score, f1_score
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, classification_report, confusion_matrix
 
-# Streamlit Page Setup
 st.set_page_config(page_title="Predict Final Student Status", layout="wide")
-st.title("🎓 Predict Final Student Status")
-st.markdown("Upload your dataset to analyze and predict each student's final status (Active, Drop, Graduate, Inactive).")
 
-# Upload File
+# Title
+st.markdown("## 🎓 Predict Final Student Status")
+st.markdown("Upload your dataset to analyze and predict each student’s final status (Active, Drop, Graduate, Inactive).")
+
+# File uploader
 uploaded_file = st.file_uploader("📁 Upload your Excel (.xlsx) or CSV file", type=["xlsx", "csv"])
+
+# Load and validate dataset
 if uploaded_file:
-    if uploaded_file.name.endswith(".xlsx"):
-        sheet_names = pd.ExcelFile(uploaded_file).sheet_names
-        selected_sheet = st.selectbox("📑 Select a Sheet", sheet_names)
-        df = pd.read_excel(uploaded_file, sheet_name=selected_sheet)
-    else:
+    if uploaded_file.name.endswith(".csv"):
         df = pd.read_csv(uploaded_file)
+    else:
+        excel_file = pd.ExcelFile(uploaded_file)
+        sheet = st.selectbox("📄 Select a Sheet", excel_file.sheet_names)
+        df = excel_file.parse(sheet_name=sheet)
 
-    st.success("✅ File uploaded successfully!")
-
-    # Remove unnamed columns
-    df = df.loc[:, ~df.columns.str.contains("^Unnamed")]
+    df.columns = df.columns.str.strip()  # remove any leading/trailing spaces in column names
 
     if 'NAME' in df.columns and 'Final Status' in df.columns:
-        df_filtered = df.copy()
+        st.success("✅ File uploaded successfully!")
+        
+        # Show raw data
+        st.subheader("🧾 Raw Data")
+        st.dataframe(df[['NAME', 'Final Status']].head())
 
-        # Drop rows where Final Status is null
-        df_filtered = df_filtered[df_filtered['Final Status'].notna()]
+        # Filter dataset to drop missing Final Status
+        df = df[df['Final Status'].notna()]
 
-        st.subheader("📄 Raw Data")
-        st.dataframe(df_filtered[['NAME', 'Final Status']].head())
-
-        # Clean Target Column
-        le_target = LabelEncoder()
-        try:
-            df_filtered['Target'] = le_target.fit_transform(df_filtered['Final Status'].astype(str))
-        except:
-            st.error("❌ Error encoding 'Final Status'. Please check for inconsistent values.")
-            st.stop()
-
-        # EDA Layout
-        st.subheader("📊 Exploratory Data Analysis")
-
+        # Exploratory Data Analysis
+        st.markdown("### 📊 Exploratory Data Analysis")
+        
+        # Countplot of Final Status
         col1, col2 = st.columns(2)
-
         with col1:
-            st.markdown("#### 🎯 Final Status Distribution")
-            st.bar_chart(df_filtered['Final Status'].value_counts())
+            fig1, ax1 = plt.subplots(figsize=(5, 3))
+            sns.countplot(data=df, x='Final Status', palette="viridis", ax=ax1)
+            ax1.set_title("Final Status Distribution")
+            ax1.grid(False)
+            st.pyplot(fig1)
 
-        with col2:
-            st.markdown("#### 📋 Summary Statistics (numeric only)")
-            numeric_stats = df_filtered.select_dtypes(include='number').describe().T
-            st.dataframe(numeric_stats)
+        # Histogram of Age if available
+        if 'Age' in df.columns:
+            with col2:
+                fig2, ax2 = plt.subplots(figsize=(5, 3))
+                df['Age'].dropna().astype(int).hist(bins=10, ax=ax2)
+                ax2.set_title("Age Distribution")
+                ax2.set_xlabel("Age")
+                ax2.set_ylabel("Frequency")
+                ax2.grid(False)
+                st.pyplot(fig2)
 
-        # Histograms (only for numeric columns)
-        numeric_cols = df_filtered.select_dtypes(include=np.number).columns.tolist()
-        for col in numeric_cols:
-            fig, ax = plt.subplots(figsize=(5, 3))
-            ax.hist(df_filtered[col].dropna(), bins=15, edgecolor='black')
-            ax.set_title(f"Histogram of {col}")
-            ax.grid(False)
-            st.pyplot(fig)
-
-        # Encode Categorical Features
-        features = df_filtered.drop(columns=['NAME', 'EMAIL', 'Final Status', 'Target'], errors='ignore')
-        encoded_df = pd.DataFrame()
-        for col in features.columns:
-            if features[col].dtype == 'object':
-                if df_filtered[col].nunique() < 15:
-                    encoded_df[col] = LabelEncoder().fit_transform(df_filtered[col].astype(str))
-            else:
-                encoded_df[col] = features[col]
-
-        model_df = encoded_df.copy()
-        model_df['Target'] = df_filtered['Target']
-        model_df = model_df.dropna()
+        # Summary statistics (only numeric)
+        numeric_df = df.select_dtypes(include=[np.number])
+        st.markdown("#### 📌 Summary Statistics (numeric only)")
+        if not numeric_df.empty:
+            st.dataframe(numeric_df.describe().transpose())
 
         # Correlation Heatmap
-        st.markdown("#### 🔥 Correlation Heatmap")
-        fig_corr, ax = plt.subplots(figsize=(8, 5))
-        sns.heatmap(model_df.corr(), annot=True, cmap='Blues', fmt=".2f", ax=ax)
-        st.pyplot(fig_corr)
+        if numeric_df.shape[1] > 1:
+            st.markdown("#### 🔥 Correlation Heatmap")
+            fig3, ax3 = plt.subplots(figsize=(6, 4))
+            sns.heatmap(numeric_df.corr(), annot=True, cmap='coolwarm', ax=ax3)
+            st.pyplot(fig3)
 
-        # Modeling
-        st.subheader("⚙ Logistic Regression Model")
-        X = model_df.drop(columns='Target')
-        y = model_df['Target']
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+        # Preprocessing for modeling
+        st.markdown("### 🧠 Logistic Regression Model")
 
-        model = GridSearchCV(LogisticRegression(max_iter=1000), param_grid={
-            'C': [0.1, 1, 10],
-            'penalty': ['l2'],
-            'solver': ['lbfgs']
-        }, cv=3)
+        df_model = df.copy()
+        df_model = df_model.dropna(subset=['Final Status'])
+        
+        # Drop irrelevant columns
+        drop_cols = ['NAME', 'EMAIL', 'Final Status'] if 'EMAIL' in df_model.columns else ['NAME', 'Final Status']
+        features = df_model.drop(columns=drop_cols)
+        features = features.select_dtypes(include=['object', 'category', 'int64', 'float64'])
 
+        # Encode categorical columns
+        for col in features.select_dtypes(include='object').columns:
+            features[col] = LabelEncoder().fit_transform(features[col].astype(str))
+
+        # Align feature and target
+        X = features
+        y = df_model['Final Status']
+        le_target = LabelEncoder()
+        y_encoded = le_target.fit_transform(y)
+
+        # Train-test split
+        X_train, X_test, y_train, y_test = train_test_split(X, y_encoded, test_size=0.2, random_state=42, stratify=y_encoded)
+
+        # Model
+        model = LogisticRegression(max_iter=1000)
         model.fit(X_train, y_train)
         y_pred = model.predict(X_test)
 
-        # Evaluation
+        # Evaluation metrics
         acc = accuracy_score(y_test, y_pred)
-        prec = precision_score(y_test, y_pred, average='weighted', zero_division=0)
+        prec = precision_score(y_test, y_pred, average='weighted')
         rec = recall_score(y_test, y_pred, average='weighted')
         f1 = f1_score(y_test, y_pred, average='weighted')
 
@@ -114,25 +114,22 @@ if uploaded_file:
         st.markdown(f"*Recall:* {rec:.2f}")
         st.markdown(f"*F1 Score (Recommended):* {f1:.2f}")
 
-        st.text("Classification Report:")
-        st.text(classification_report(y_test, y_pred, target_names=le_target.classes_))
+        # Classification report
+        st.markdown("#### 📄 Classification Report")
+        report = classification_report(y_test, y_pred, target_names=le_target.classes_, output_dict=True)
+        report_df = pd.DataFrame(report).transpose().round(2)
+        st.dataframe(report_df)
 
-        # Full prediction
-        try:
-            full_pred = model.predict(X)
-            df_results = pd.DataFrame({
-                'Student Name': df_filtered.loc[X.index, 'NAME'],
-                'Actual Final Status': df_filtered.loc[X.index, 'Final Status'],
-                'Predicted Final Status': le_target.inverse_transform(full_pred)
-            })
+        # Match prediction with actual NAME
+        st.markdown("#### 🎯 Sample Predictions")
 
-            st.subheader("🧾 All Student Predictions")
-            st.dataframe(df_results)
-            st.download_button("📥 Download Predictions", df_results.to_csv(index=False), file_name="student_predictions.csv")
-        except Exception as e:
-            st.error(f"❌ Prediction error: {str(e)}")
+        # Match to original names (only in test set)
+        test_indices = X_test.index
+        predictions_named = df.loc[test_indices, ['NAME']].copy()
+        predictions_named['Actual Status'] = le_target.inverse_transform(y_test)
+        predictions_named['Predicted Status'] = le_target.inverse_transform(y_pred)
+
+        st.dataframe(predictions_named.reset_index(drop=True))
 
     else:
-        st.error("❌ Dataset must contain both 'NAME' and 'Final Status' columns.")
-else:
-    st.info("ℹ Please upload your dataset to get started.")
+        st.error("❌ Dataset must contain both *'NAME'* and *'Final Status'* columns.")
