@@ -110,10 +110,18 @@ if uploaded_file:
 
         # Display predictions
         st.markdown("#### 🎯 Predictions")
-        predictions_df = df.loc[X_clean.index, ["NAME"]].copy()
-        predictions_df["Actual"] = le_target.inverse_transform(y_clean)
-        predictions_df["Predicted"] = le_target.inverse_transform(y_pred)
-        st.dataframe(predictions_df.reset_index(drop=True))
+
+        # Get matching index before cleaning
+        matching_idx = X.index.intersection(X_clean.index)
+        names_series = df.loc[matching_idx, "NAME"].reset_index(drop=True)
+
+        predictions_df = pd.DataFrame({
+       "NAME": names_series,
+       "Actual": le_target.inverse_transform(y_test),
+      "Predicted": le_target.inverse_transform(y_pred)
+})
+
+st.dataframe(predictions_df)
 
     else:
         st.error("❌ Dataset must contain both 'NAME' and 'Final Status' columns.")
