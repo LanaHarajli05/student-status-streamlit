@@ -1,104 +1,116 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.express as px
-import plotly.figure_factory as ff
-from sklearn.model_selection import train_test_split
+import seaborn as sns
+import matplotlib.pyplot as plt
+
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import classification_report, f1_score
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import (
+    classification_report,
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score
+)
 
-# App Config
-st.set_page_config(page_title="Student Final Status Prediction", layout="centered")
+# Streamlit Page Setup
+st.set_page_config(page_title="Predict Final Student Status", layout="centered")
 st.title("🎓 Predict Final Student Status")
-st.markdown("Upload your dataset to analyze and predict each student's final status (Active, Drop, Graduate, Inactive).")
+st.markdown("Upload your dataset to analyze and predict each student’s final status (Active, Drop, Graduate, Inactive).")
 
-# Upload file
-uploaded_file = st.file_uploader("📁 Upload your Excel (.xlsx) or CSV file", type=["csv", "xlsx"])
+# File Upload
+uploaded_file = st.file_uploader("📤 Upload your Excel (.xlsx) or CSV file", type=["xlsx", "csv"])
 
 if uploaded_file:
     try:
-        # Load data
+        # Read Excel or CSV
         if uploaded_file.name.endswith(".xlsx"):
-            df = pd.read_excel(uploaded_file)
+            df = pd.read_excel(uploaded_file, sheet_name=None)
+            sheet_names = list(df.keys())
+            sheet = st.selectbox("📄 Select a Sheet", sheet_names)
+            df = df[sheet]
         else:
             df = pd.read_csv(uploaded_file)
 
-        # Clean unnamed columns
-        df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
+        # Clean column names
+        df.columns = df.columns.str.strip()
+        df = df.loc[:, ~df.columns.str.contains("^Unnamed")]
 
-        # Clean false missing (e.g., spaces)
-        df.replace(r'^\s*$', np.nan, regex=True, inplace=True)
-        df.dropna(inplace=True)
+        if "NAME" not in df.columns or "Final Status" not in df.columns:
+            st.error("❌ Dataset must include both 'NAME' and 'Final Status' columns.")
+        else:
+            df = df.dropna(subset=["NAME", "Final Status"])
 
-        # Preview
-        st.success("✅ File uploaded successfully!")
-        st.subheader("📋 Raw Data")
-        st.dataframe(df.head())
+            st.success("✅ File uploaded successfully!")
+            st.subheader("🗃 Raw Data")
+            st.dataframe(df[["NAME", "Final Status"]].head())
 
-        # --- EDA ---
-        st.subheader("📊 Exploratory Data Analysis")
+            # -------------------------------
+            # 📊 Exploratory Data Analysis
+            # -------------------------------
+            st.subheader("📊 Exploratory Data Analysis")
 
-        # Correlation heatmap (numeric only)
-        numeric_df = df.select_dtypes(include='number')
-        if not numeric_df.empty:
+            st.markdown("**Distribution of Final Status**")
+            st.bar_chart(df["Final Status"].value_counts())
+
             st.markdown("**Correlation Heatmap**")
-            corr = numeric_df.corr().round(2)
-            fig = px.imshow(corr, text_auto=True, aspect="auto", color_continuous_scale="RdBu")
-            st.plotly_chart(fig)
+            df["Final Status Encoded"] = df["Final Status"].astype("category").cat.codes
+            df["Student_ID"] = np.arange(len(df))
 
-        # Class distribution
-        if "Final Status" in df.columns:
-            st.markdown("**Final Status Distribution**")
-            fig2 = px.histogram(df, x="Final Status", title="Distribution of Final Status")
-            st.plotly_chart(fig2)
+            corr = df[["Student_ID", "Final Status Encoded"]].corr()
 
-        # --- Model Setup ---
-        st.subheader("⚙️ Model Configuration")
-        if "Name" in df.columns and "Final Status" in df.columns:
-            feature_cols = [col for col in df.columns if col not in ["Name", "Final Status"]]
-            X = df[feature_cols]
-            y = df["Final Status"]
-            names = df["Name"]
+            fig, ax = plt.subplots()
+            sns.heatmap(corr, annot=True, cmap="Blues", fmt=".2f", ax=ax)
+            ax.set_title("Correlation Heatmap")
+            st.pyplot(fig)
 
-            # Encode categorical features
-            X = pd.get_dummies(X)
+            # -------------------------------
+            # 🤖 Model: Logistic Regression
+            # -------------------------------
+            st.subheader("⚙️ Model Configuration")
 
-            # Encode target
-            y_encoded = y.astype("category").cat.codes
-            label_map = dict(enumerate(y.astype("category").cat.categories))
+            st.info("Predicting 'Final Status' using generated Student_ID only (since NAME is not a feature).")
 
-            # Split
-            X_train, X_test, y_train, y_test, name_test = train_test_split(X, y_encoded, names, test_size=0.2, random_state=42)
+            X = df[["Student_ID"]]
+            y = df["Final Status Encoded"]
+            name_map = dict(zip(df["Student_ID"], df["NAME"]))
+            label_map = dict(enumerate(df["Final Status"].astype("category").cat.categories))
 
-            # Train model
+            # Train/Test Split
+            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
             model = LogisticRegression(max_iter=1000)
             model.fit(X_train, y_train)
             y_pred = model.predict(X_test)
 
-            # --- Evaluation ---
-            st.subheader("📈 Model Evaluation")
-            f1 = f1_score(y_test, y_pred, average='macro')
-            st.write(f"**F1 Score (macro):** {f1:.2f}")
+            # -------------------------------
+            # ✅ Model Evaluation
+            # -------------------------------
+            st.subheader("✅ Model Evaluation")
+            st.write(f"**Accuracy:** {accuracy_score(y_test, y_pred):.2f}")
+            st.write(f"**Precision:** {precision_score(y_test, y_pred, average='weighted', zero_division=0):.2f}")
+            st.write(f"**Recall:** {recall_score(y_test, y_pred, average='weighted', zero_division=0):.2f}")
+            st.write(f"**F1-score:** {f1_score(y_test, y_pred, average='weighted', zero_division=0):.2f}")
+
             st.text("Classification Report:")
-            st.text(classification_report(y_test, y_pred, target_names=label_map.values()))
+            st.text(classification_report(y_test, y_pred, zero_division=0))
 
-            # --- Predictions by student ---
-            st.subheader("📌 Predicted Status for Test Students")
-            predictions_df = pd.DataFrame({
-                "Name": name_test.values,
-                "Actual Status": y_test.map(label_map),
-                "Predicted Status": pd.Series(y_pred).map(label_map)
-            })
-            st.dataframe(predictions_df)
+            # -------------------------------
+            # 📋 Prediction Results
+            # -------------------------------
+            st.subheader("📋 Student Status Predictions")
+            pred_df = X_test.copy()
+            pred_df["Actual"] = y_test.map(label_map)
+            pred_df["Predicted"] = pd.Series(y_pred, index=pred_df.index).map(label_map)
+            pred_df["Student Name"] = pred_df["Student_ID"].map(name_map)
 
-        else:
-            st.error("❌ Dataset must include both 'Name' and 'Final Status' columns.")
+            st.dataframe(pred_df[["Student Name", "Actual", "Predicted"]].reset_index(drop=True))
 
     except Exception as e:
-        st.error(f"🚨 Error: {e}")
+        st.error(f"❌ An error occurred: {e}")
+
 else:
-    st.info("Upload a dataset to get started.")
-
-
+    st.info("Upload your dataset to begin.")
 
 
