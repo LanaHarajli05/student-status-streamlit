@@ -1,9 +1,8 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import seaborn as sns
-import matplotlib.pyplot as plt
 import plotly.express as px
+import plotly.figure_factory as ff
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import classification_report, f1_score
@@ -43,10 +42,9 @@ if uploaded_file:
         numeric_df = df.select_dtypes(include='number')
         if not numeric_df.empty:
             st.markdown("**Correlation Heatmap**")
-            corr = numeric_df.corr()
-            fig, ax = plt.subplots()
-            sns.heatmap(corr, annot=True, cmap='coolwarm', fmt=".2f", ax=ax)
-            st.pyplot(fig)
+            corr = numeric_df.corr().round(2)
+            fig = px.imshow(corr, text_auto=True, aspect="auto", color_continuous_scale="RdBu")
+            st.plotly_chart(fig)
 
         # Class distribution
         if "Final Status" in df.columns:
@@ -100,6 +98,7 @@ if uploaded_file:
         st.error(f"🚨 Error: {e}")
 else:
     st.info("Upload a dataset to get started.")
+
 
 
 
