@@ -30,14 +30,12 @@ if uploaded_file:
         # Clean Final Status
         df = df[df["Final Status"].notna()]
         df["Final Status"] = df["Final Status"].astype(str).str.strip()
-
-        # Remove invalid values like '207' if exists
-        df = df[df["Final Status"] != "207"]
+        df = df[df["Final Status"] != "207"]  # Remove invalid entry if exists
 
         st.subheader("📄 Raw Data")
         st.dataframe(df[["NAME", "Final Status"]].head())
 
-        # Exploratory Data Analysis
+        # EDA
         st.markdown("### 📊 Exploratory Data Analysis")
 
         col1, col2 = st.columns(2)
@@ -47,7 +45,6 @@ if uploaded_file:
             fig1, ax1 = plt.subplots(figsize=(5, 3))
             sns.countplot(data=df, x="Final Status", palette="Blues", ax=ax1)
             ax1.set_title("Final Status")
-            ax1.grid(False)
             st.pyplot(fig1)
 
         with col2:
@@ -58,59 +55,65 @@ if uploaded_file:
                 ax2.set_title("Age Distribution")
                 ax2.set_xlabel("Age")
                 ax2.set_ylabel("Count")
-                ax2.grid(False)
                 st.pyplot(fig2)
 
         # Summary statistics
         st.markdown("#### 📌 Summary Statistics")
         st.dataframe(df.select_dtypes(include=np.number).describe().transpose())
 
-        # Correlation Heatmap
+        # Heatmap
         if df.select_dtypes(include=np.number).shape[1] > 1:
             st.markdown("#### 🔥 Correlation Heatmap")
             fig_corr, ax_corr = plt.subplots(figsize=(5, 3))
             sns.heatmap(df.select_dtypes(include=np.number).corr(), annot=True, cmap="Blues", ax=ax_corr)
             st.pyplot(fig_corr)
 
-        # Prepare data for model
-        st.markdown("### 🧠 Logistic Regression Model")
+        # Prepare for modeling
         df_model = df.copy()
-
         drop_cols = ["NAME", "EMAIL", "Final Status"] if "EMAIL" in df_model.columns else ["NAME", "Final Status"]
-        X = df_model.drop(columns=drop_cols)
-        X = X.select_dtypes(include=["int64", "float64", "object"])
+        X = df_model.drop(columns=drop_cols, errors="ignore")
 
+        # Label encode object columns with low cardinality
         for col in X.select_dtypes(include="object").columns:
-            X[col] = LabelEncoder().fit_transform(X[col].astype(str))
+            if X[col].nunique() < 20:
+                X[col] = LabelEncoder().fit_transform(X[col].astype(str))
 
+        X = X.select_dtypes(include=[np.number])
         y = df_model["Final Status"].astype(str)
         le_target = LabelEncoder()
         y_encoded = le_target.fit_transform(y)
 
-        # Split and fit model
-        X_train, X_test, y_train, y_test = train_test_split(X, y_encoded, test_size=0.2, random_state=42, stratify=y_encoded)
+        # Final safety clean before model
+        model_data = pd.concat([X, pd.Series(y_encoded, name="Target")], axis=1)
+        model_data = model_data.replace([np.inf, -np.inf], np.nan).dropna()
+        X_clean = model_data.drop("Target", axis=1)
+        y_clean = model_data["Target"]
 
+        # Train-test split
+        X_train, X_test, y_train, y_test = train_test_split(X_clean, y_clean, test_size=0.2, random_state=42, stratify=y_clean)
+
+        # Train baseline logistic model
         model = LogisticRegression(max_iter=1000)
         model.fit(X_train, y_train)
         y_pred = model.predict(X_test)
 
         # Metrics
+        st.markdown("### 🤖 Logistic Regression Model")
         st.markdown(f"*Accuracy:* {accuracy_score(y_test, y_pred):.2f}")
         st.markdown(f"*Precision:* {precision_score(y_test, y_pred, average='weighted'):.2f}")
         st.markdown(f"*Recall:* {recall_score(y_test, y_pred, average='weighted'):.2f}")
         st.markdown(f"*F1 Score (Recommended):* {f1_score(y_test, y_pred, average='weighted'):.2f}")
 
-        # Classification report
+        # Report
         st.markdown("#### 📄 Classification Report")
-        report = classification_report(y_test, y_pred, target_names=le_target.classes_, output_dict=True)
-        st.dataframe(pd.DataFrame(report).transpose().round(2))
+        st.dataframe(pd.DataFrame(classification_report(y_test, y_pred, target_names=le_target.classes_, output_dict=True)).transpose().round(2))
 
-        # Display predictions with names
-        st.markdown("#### 🎯 Sample Predictions")
-        sample_results = df.loc[X_test.index, ["NAME"]].copy()
-        sample_results["Actual"] = le_target.inverse_transform(y_test)
-        sample_results["Predicted"] = le_target.inverse_transform(y_pred)
-        st.dataframe(sample_results.reset_index(drop=True))
+        # Display predictions
+        st.markdown("#### 🎯 Predictions")
+        predictions_df = df.loc[X_clean.index, ["NAME"]].copy()
+        predictions_df["Actual"] = le_target.inverse_transform(y_clean)
+        predictions_df["Predicted"] = le_target.inverse_transform(y_pred)
+        st.dataframe(predictions_df.reset_index(drop=True))
 
     else:
         st.error("❌ Dataset must contain both 'NAME' and 'Final Status' columns.")
