@@ -21,7 +21,7 @@ if uploaded_file:
         else:
             df = pd.read_csv(uploaded_file)
 
-        st.success("File uploaded successfully!")
+        st.success("✅ File uploaded successfully!")
         st.subheader("🔍 Raw Data Preview")
         st.dataframe(df.head())
 
@@ -38,9 +38,12 @@ if uploaded_file:
             X = df[feature_cols]
             y = df[target_col]
 
-            # Encode categorical target
+            # Encode target if categorical
             if y.dtype == 'object':
                 y = y.astype('category').cat.codes
+
+            # Encode categorical features
+            X = pd.get_dummies(X)
 
             # Train/test split
             X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
@@ -52,13 +55,14 @@ if uploaded_file:
 
             # Results
             st.subheader("✅ Model Performance")
-            st.write(f"Accuracy: **{accuracy_score(y_test, y_pred):.2f}**")
+            st.write(f"**Accuracy:** {accuracy_score(y_test, y_pred):.2f}")
             st.text("Classification Report:")
             st.text(classification_report(y_test, y_pred))
 
     except Exception as e:
-        st.error(f"Something went wrong: {e}")
+        st.error(f"🚫 Something went wrong: {e}")
 
 else:
-    st.info("Please upload your dataset to begin.")
+    st.info("⬆️ Please upload your dataset to begin.")
+
 
