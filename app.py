@@ -23,6 +23,9 @@ if uploaded_file:
     else:
         df = pd.read_csv(uploaded_file)
 
+    # Clean column names
+    df.columns = df.columns.str.strip()
+
     st.success("✅ File uploaded successfully!")
 
     # Clean up
@@ -120,6 +123,7 @@ if uploaded_file:
         st.error("❌ Dataset must include both 'NAME' and 'Final Status' columns.")
 else:
     st.info("ℹ️ Upload your dataset to begin.")
+
 
 
 
