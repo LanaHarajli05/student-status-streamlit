@@ -10,92 +10,106 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from xgboost import XGBClassifier
 
-# Load data
-df = pd.read_csv("cleaned_student_data.csv")
+st.set_page_config(page_title="Predict Final Student Status", layout="wide")
 
-st.title("🎓 Student Final Status Prediction App")
+st.title("🎓 Predict Final Student Status")
+st.markdown("Upload your dataset to analyze and predict each student’s final status (Active, Drop, Graduate, Inactive).")
 
-# ----------------------------------------
-# EDA Section
-# ----------------------------------------
-st.header("📊 Exploratory Data Analysis")
+# Upload file
+uploaded_file = st.file_uploader("Upload your Excel (.xlsx) or CSV file", type=["xlsx", "csv"])
 
-st.subheader("🎯 Target Variable Distribution")
-st.bar_chart(df['Final_Status'].value_counts())
+if uploaded_file:
+    # Load data
+    try:
+        if uploaded_file.name.endswith('.xlsx'):
+            sheet = st.selectbox("Select a Sheet", pd.ExcelFile(uploaded_file).sheet_names)
+            df = pd.read_excel(uploaded_file, sheet_name=sheet)
+        else:
+            df = pd.read_csv(uploaded_file)
+        
+        # Clean columns
+        df.columns = df.columns.str.strip().str.lower()
 
-st.subheader("📌 Summary Statistics")
-st.dataframe(df.describe(include='all').transpose())
+        if not all(col in df.columns for col in ['name', 'final status']):
+            st.error("❌ Dataset must contain both 'NAME' and 'Final Status' columns.")
+        else:
+            df = df.dropna()
 
-st.subheader("🧭 Correlation Heatmap (Numerical Features Only)")
-numeric_df = df.select_dtypes(include=['int64', 'float64'])
-if not numeric_df.empty:
-    plt.figure(figsize=(8, 5))
-    sns.heatmap(numeric_df.corr(), annot=True, cmap='coolwarm')
-    st.pyplot(plt.gcf())
-else:
-    st.info("No numerical features to show correlation.")
+            # Drop invalid labels if any
+            df = df[df['final status'].isin(['Active', 'Graduated', 'Dropped', 'In-Active'])]
 
-# ----------------------------------------
-# Preprocessing
-# ----------------------------------------
-st.header("⚙️ Model Training and Prediction")
+            st.success("✅ Data loaded successfully!")
 
-# Drop identifier and target from features
-X = df.drop(columns=['NAME', 'EMAIL', 'Final_Status'], errors='ignore')
-y = df['Final_Status']
+            # ---------- EDA ----------
+            st.header("📊 Exploratory Data Analysis")
 
-# Encode categorical variables
-X_encoded = pd.get_dummies(X)
-le = LabelEncoder()
-y_encoded = le.fit_transform(y)
+            st.subheader("🎯 Target Distribution")
+            st.bar_chart(df['final status'].value_counts())
 
-# Train/Test split
-X_train, X_test, y_train, y_test = train_test_split(X_encoded, y_encoded, test_size=0.2, random_state=42)
+            st.subheader("📌 Summary Statistics")
+            st.dataframe(df.describe(include='all').transpose())
 
-# Model selection
-model_choice = st.selectbox("Choose Model", ["Logistic Regression", "Random Forest", "XGBoost"])
+            st.subheader("🧭 Correlation Heatmap (Numerical Features Only)")
+            numeric_df = df.select_dtypes(include=['int64', 'float64'])
+            if not numeric_df.empty:
+                plt.figure(figsize=(8, 5))
+                sns.heatmap(numeric_df.corr(), annot=True, cmap='coolwarm')
+                st.pyplot(plt.gcf())
+            else:
+                st.info("No numerical features to show correlation.")
 
-if model_choice == "Logistic Regression":
-    model = LogisticRegression(max_iter=1000)
-elif model_choice == "Random Forest":
-    model = RandomForestClassifier()
-elif model_choice == "XGBoost":
-    model = XGBClassifier(use_label_encoder=False, eval_metric='mlogloss')
+            # ---------- Preprocessing ----------
+            st.header("⚙️ Train Model & Predict")
 
-# Train
-model.fit(X_train, y_train)
-y_pred = model.predict(X_test)
+            X = df.drop(columns=['name', 'email', 'final status'], errors='ignore')
+            y = df['final status']
+            
+            # One-hot encode categorical vars
+            X_encoded = pd.get_dummies(X)
+            le = LabelEncoder()
+            y_encoded = le.fit_transform(y)
 
-# Evaluation
-st.subheader("📈 Model Evaluation")
-report = classification_report(y_test, y_pred, target_names=le.classes_, output_dict=True)
-report_df = pd.DataFrame(report).transpose()
-st.dataframe(report_df.style.format("{:.2f}"))
+            # Split
+            X_train, X_test, y_train, y_test = train_test_split(X_encoded, y_encoded, test_size=0.2, random_state=42)
 
-# Confusion matrix
-st.subheader("🌀 Confusion Matrix")
-cm = confusion_matrix(y_test, y_pred)
-plt.figure(figsize=(6, 4))
-sns.heatmap(cm, annot=True, fmt='d', xticklabels=le.classes_, yticklabels=le.classes_, cmap='Blues')
-plt.xlabel("Predicted")
-plt.ylabel("Actual")
-st.pyplot(plt.gcf())
+            # Model selection
+            model_name = st.selectbox("Select a Model", ["Logistic Regression", "Random Forest", "XGBoost"])
 
-# ----------------------------------------
-# Predictions for Each Student
-# ----------------------------------------
-st.header("📋 Predictions for All Students")
+            if model_name == "Logistic Regression":
+                model = LogisticRegression(max_iter=1000)
+            elif model_name == "Random Forest":
+                model = RandomForestClassifier()
+            elif model_name == "XGBoost":
+                model = XGBClassifier(use_label_encoder=False, eval_metric='mlogloss')
 
-# Predict for all rows
-full_X_encoded = pd.get_dummies(X_encoded)
-full_preds = model.predict(full_X_encoded)
-predicted_labels = le.inverse_transform(full_preds)
+            # Train model
+            model.fit(X_train, y_train)
+            y_pred = model.predict(X_test)
 
-# Add predictions to original dataframe
-result_df = df.copy()
-result_df["Predicted_Status"] = predicted_labels
+            # ---------- Evaluation ----------
+            st.subheader("📈 Evaluation Metrics")
+            report = classification_report(y_test, y_pred, target_names=le.classes_, output_dict=True)
+            report_df = pd.DataFrame(report).transpose()
+            st.dataframe(report_df.style.format("{:.2f}"))
 
-st.dataframe(result_df[["NAME", "Final_Status", "Predicted_Status"]])
+            st.subheader("🌀 Confusion Matrix")
+            cm = confusion_matrix(y_test, y_pred)
+            plt.figure(figsize=(6, 4))
+            sns.heatmap(cm, annot=True, fmt='d', xticklabels=le.classes_, yticklabels=le.classes_, cmap='Blues')
+            plt.xlabel("Predicted")
+            plt.ylabel("Actual")
+            st.pyplot(plt.gcf())
 
-# Optional: Download predictions
-st.download_button("📥 Download Predictions CSV", data=result_df.to_csv(index=False), file_name="student_predictions.csv", mime="text/csv")
+            # ---------- Predict All ----------
+            st.header("📋 Predictions for Each Student")
+
+            full_preds = model.predict(X_encoded)
+            predicted_labels = le.inverse_transform(full_preds)
+            df["predicted status"] = predicted_labels
+
+            st.dataframe(df[["name", "final status", "predicted status"]])
+
+            st.download_button("📥 Download Predictions", data=df.to_csv(index=False), file_name="student_predictions.csv", mime="text/csv")
+
+    except Exception as e:
+        st.error(f"Something went wrong: {e}")
