@@ -18,11 +18,11 @@ except ImportError:
 st.set_page_config("🎓 Student Status App", layout="wide")
 st.title("🎓 Predict Final Student Status (Capstone Dashboard)")
 
-# Load cleaned files
+# Load Excel directly
 @st.cache_data
 def load_data():
-    eda = pd.read_csv("eda_final.csv")
-    model = pd.read_csv("model_final.csv")
+    eda = pd.read_excel("AI & DS Enrolled Students Course Status 4-7-2025 (1).xlsx", sheet_name="All Enrolled")
+    model = pd.read_excel("AI & DS Enrolled Students Course Status 4-7-2025 (1).xlsx", sheet_name="All Enrolled (2)")
     return eda, model
 
 eda_df, model_df = load_data()
@@ -36,8 +36,8 @@ with tab1:
 
     # Filters
     st.sidebar.header("🔍 EDA Filters")
-    gender_filter = st.sidebar.multiselect("Filter by Gender", options=eda_df['gender'].unique(), default=eda_df['gender'].unique())
-    uni_filter = st.sidebar.multiselect("Filter by University", options=eda_df['university'].unique(), default=eda_df['university'].unique())
+    gender_filter = st.sidebar.multiselect("Filter by Gender", options=eda_df['gender'].dropna().unique(), default=eda_df['gender'].dropna().unique())
+    uni_filter = st.sidebar.multiselect("Filter by University", options=eda_df['university'].dropna().unique(), default=eda_df['university'].dropna().unique())
 
     eda_filtered = eda_df[(eda_df['gender'].isin(gender_filter)) & (eda_df['university'].isin(uni_filter))]
 
@@ -47,28 +47,28 @@ with tab1:
 
     with st.expander("🏫 University Distribution"):
         st.bar_chart(eda_filtered['university'].value_counts())
-        st.markdown("**Insight:** Shows which universities contribute the most students.")
+        st.markdown("**Insight:** Which universities students are coming from.")
 
     with st.expander("🧠 Major Distribution"):
         st.bar_chart(eda_filtered['major'].value_counts())
-        st.markdown("**Insight:** Highlights dominant academic backgrounds.")
+        st.markdown("**Insight:** Academic background distribution.")
 
     with st.expander("📈 Age Distribution"):
         plt.figure(figsize=(6,3))
         sns.histplot(eda_filtered['age'], bins=8, kde=True, color='lightblue', edgecolor='black')
         plt.title("Age Distribution")
         st.pyplot(plt.gcf())
-        st.markdown("**Insight:** Age trends among students — younger or older concentration.")
+        st.markdown("**Insight:** See if younger or older students dominate.")
 
     with st.expander("📊 Final Status Distribution"):
         st.bar_chart(eda_filtered['final status'].value_counts())
-        st.markdown("**Insight:** Class balance of final student statuses.")
+        st.markdown("**Insight:** Balance of classes (Active, Dropped, etc.).")
 
     with st.expander("📦 Age by Final Status (Boxplot)"):
         plt.figure(figsize=(6,4))
         sns.boxplot(x='final status', y='age', data=eda_filtered, palette='Pastel1')
         st.pyplot(plt.gcf())
-        st.markdown("**Insight:** See if age affects likelihood of dropout, graduation, etc.")
+        st.markdown("**Insight:** Relation between age and status outcomes.")
 
 # ============ TAB 2: MODELING ============
 with tab2:
@@ -120,3 +120,4 @@ with tab2:
     predicted_labels = le.inverse_transform(full_preds)
     model_df["Predicted Status"] = predicted_labels
     st.dataframe(model_df[["name", "final status", "Predicted Status"]])
+
