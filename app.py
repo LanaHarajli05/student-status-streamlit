@@ -1,129 +1,119 @@
-import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-
+import streamlit as st
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import LabelEncoder
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, classification_report
+from sklearn.metrics import classification_report, accuracy_score, precision_score, recall_score, f1_score
 
 st.set_page_config(page_title="Predict Final Student Status", layout="wide")
 st.title("🎓 Predict Final Student Status")
-
 st.markdown("Upload your dataset to analyze and predict each student's final status (Active, Drop, Graduate, Inactive).")
 
-# Upload Section
-uploaded_file = st.file_uploader("📁 Upload Excel or CSV", type=["xlsx", "csv"])
+uploaded_file = st.file_uploader("📁 Upload your Excel (.xlsx) or CSV file", type=["xlsx", "csv"])
+
 if uploaded_file:
-    try:
-        # Detect file type
-        if uploaded_file.name.endswith('.xlsx'):
-            sheet_names = pd.ExcelFile(uploaded_file).sheet_names
-            sheet = st.selectbox("📑 Select Sheet", sheet_names)
-            df = pd.read_excel(uploaded_file, sheet_name=sheet)
-        else:
-            df = pd.read_csv(uploaded_file)
-        
-        # Normalize column names
-        df.columns = df.columns.str.strip().str.lower()
-        columns = list(df.columns)
+    if uploaded_file.name.endswith(".xlsx"):
+        sheet_names = pd.ExcelFile(uploaded_file).sheet_names
+        selected_sheet = st.selectbox("📑 Select a Sheet", sheet_names)
+        df = pd.read_excel(uploaded_file, sheet_name=selected_sheet, header=1)
+    else:
+        df = pd.read_csv(uploaded_file)
 
-        if 'name' in columns and 'final status' in columns:
-            st.success("✅ File loaded successfully!")
+    df = df.loc[:, ~df.columns.str.contains("^Unnamed")]
 
-            # Rename for uniformity
-            df.rename(columns={'name': 'NAME', 'final status': 'Final Status'}, inplace=True)
+    if 'NAME' in df.columns and 'Final Status' in df.columns:
+        df = df[df['Final Status'].notna()]
+        df = df[df['Final Status'] != 207]  # Remove placeholder
 
-            # Remove Unnamed
-            df = df.loc[:, ~df.columns.str.contains("^Unnamed")]
+        st.success("✅ Data Loaded Successfully")
+        st.subheader("📄 Preview Data")
+        st.dataframe(df[['NAME', 'Final Status']].head())
 
-            # Drop rows with missing Final Status
-            df = df.dropna(subset=['Final Status'])
+        st.subheader("📊 Final Status Distribution")
+        final_status_counts = df['Final Status'].value_counts()
+        fig, ax = plt.subplots()
+        final_status_counts.plot(kind='bar', color=plt.cm.Blues(np.linspace(0.4, 0.9, len(final_status_counts))), ax=ax)
+        ax.set_ylabel("Count")
+        ax.set_xlabel("Final Status")
+        ax.set_title("Distribution of Final Status")
+        st.pyplot(fig)
 
-            # ================== EDA ==================
-            st.header("📊 Exploratory Data Analysis")
-            col1, col2 = st.columns(2)
+        st.subheader("📊 Age Distribution")
+        if 'Age' in df.columns:
+            fig2, ax2 = plt.subplots()
+            df['Age'].dropna().astype(int).value_counts().sort_index().plot(kind='bar', color='skyblue', ax=ax2)
+            ax2.set_title("Age Distribution")
+            ax2.set_ylabel("Count")
+            st.pyplot(fig2)
 
-            with col1:
-                st.markdown("#### Final Status Distribution")
-                final_counts = df['Final Status'].value_counts()
-                if 207 in final_counts.index or '207' in final_counts.index:
-                    final_counts = final_counts.drop(207, errors='ignore')
-                    final_counts = final_counts.drop('207', errors='ignore')
-                fig1, ax1 = plt.subplots()
-                sns.barplot(x=final_counts.index, y=final_counts.values, palette='Blues_d', ax=ax1)
-                ax1.set_title("Final Status Count")
-                st.pyplot(fig1)
+        st.subheader("📋 Summary Statistics")
+        st.write(df.describe(include='all'))
 
-            with col2:
-                if 'age' in df.columns:
-                    st.markdown("#### Age Distribution")
-                    fig2, ax2 = plt.subplots()
-                    sns.histplot(df['age'].dropna(), kde=False, bins=15, color="steelblue", edgecolor="black", ax=ax2)
-                    ax2.set_title("Age Histogram")
-                    st.pyplot(fig2)
+        # Encode target
+        le_target = LabelEncoder()
+        df['Target'] = le_target.fit_transform(df['Final Status'].astype(str))
 
-            # Heatmap
-            st.markdown("#### Correlation Heatmap")
-            numeric_cols = df.select_dtypes(include=np.number).columns
-            fig3, ax3 = plt.subplots(figsize=(6, 4))
-            sns.heatmap(df[numeric_cols].corr(), annot=True, cmap='Blues', fmt=".2f", ax=ax3)
-            st.pyplot(fig3)
+        # Prepare features
+        drop_cols = ['NAME', 'EMAIL', 'Final Status']
+        features = df.drop(columns=[col for col in drop_cols if col in df.columns], errors='ignore')
 
-            # ================== MODEL ==================
-            st.header("⚙ Logistic Regression Model")
+        # Clean categorical low-cardinality vars
+        for col in features.select_dtypes(include='object').columns:
+            if features[col].nunique() <= 15:
+                features[col] = LabelEncoder().fit_transform(features[col].astype(str))
 
-            df_model = df.copy()
-            le_target = LabelEncoder()
-            df_model['Target'] = le_target.fit_transform(df_model['Final Status'])
+        # Clean numeric columns
+        features = features.select_dtypes(include=[np.number]).dropna(axis=1)
 
-            # Drop unnecessary columns
-            features = df_model.drop(columns=['Final Status', 'Target'], errors='ignore')
-            features = features.select_dtypes(include=[np.number]).dropna()
+        df_model = features.copy()
+        df_model['Target'] = df['Target']
+        df_model = df_model.dropna()
 
-            # Match y to X after dropna
-            df_model = df_model.loc[features.index]
-            X = features
-            y = df_model['Target']
+        # 🔥 Correlation Heatmap (Smaller)
+        st.subheader("📌 Correlation Heatmap")
+        fig_corr, ax_corr = plt.subplots(figsize=(5, 4))
+        sns.heatmap(df_model.corr(), annot=True, cmap='Blues', fmt=".2f", ax=ax_corr)
+        st.pyplot(fig_corr)
 
-            # Split and train
-            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-            model = LogisticRegression(max_iter=1000)
-            model.fit(X_train, y_train)
-            y_pred = model.predict(X_test)
+        # Logistic Regression
+        st.subheader("⚙ Logistic Regression Model")
+        X = df_model.drop(columns='Target')
+        y = df_model['Target']
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-            acc = accuracy_score(y_test, y_pred)
-            prec = precision_score(y_test, y_pred, average="weighted", zero_division=0)
-            rec = recall_score(y_test, y_pred, average="weighted", zero_division=0)
-            f1 = f1_score(y_test, y_pred, average="weighted", zero_division=0)
+        model = LogisticRegression(max_iter=1000)
+        model.fit(X_train, y_train)
+        y_pred = model.predict(X_test)
 
-            st.markdown(f"*Accuracy:* {acc:.2f}")
-            st.markdown(f"*Precision:* {prec:.2f}")
-            st.markdown(f"*Recall:* {rec:.2f}")
-            st.markdown(f"*F1 Score (Recommended):* {f1:.2f}")
+        acc = accuracy_score(y_test, y_pred)
+        prec = precision_score(y_test, y_pred, average='weighted', zero_division=0)
+        rec = recall_score(y_test, y_pred, average='weighted', zero_division=0)
+        f1 = f1_score(y_test, y_pred, average='weighted', zero_division=0)
 
-            st.markdown("#### Classification Report")
-            report_df = pd.DataFrame(classification_report(y_test, y_pred, target_names=le_target.classes_, output_dict=True)).T
-            st.dataframe(report_df)
+        st.markdown(f"*Accuracy:* {acc:.2f}")
+        st.markdown(f"*Precision:* {prec:.2f}")
+        st.markdown(f"*Recall:* {rec:.2f}")
+        st.markdown(f"*F1 Score (Recommended):* {f1:.2f}")
 
-            # ================== PREDICTION ==================
-            st.markdown("#### 📋 Predictions")
-            pred_all = model.predict(X)
-            predictions_df = pd.DataFrame({
-                "NAME": df_model["NAME"].values,
-                "Actual Final Status": df_model["Final Status"].values,
-                "Predicted Final Status": le_target.inverse_transform(pred_all)
-            })
-            st.dataframe(predictions_df)
+        st.text("📑 Classification Report:")
+        st.text(classification_report(y_test, y_pred, target_names=le_target.classes_))
 
-            st.download_button("📥 Download Predictions CSV", predictions_df.to_csv(index=False), file_name="student_predictions.csv")
+        # 🔍 Predictions
+        y_full_pred = model.predict(X)
+        df_results = pd.DataFrame({
+            "Student Name": df['NAME'].values,
+            "Actual Final Status": df['Final Status'].values,
+            "Predicted Final Status": le_target.inverse_transform(y_full_pred)
+        })
 
-        else:
-            st.error("❌ Dataset must contain both 'NAME' and 'Final Status' columns.")
+        st.subheader("📍 All Student Predictions")
+        st.dataframe(df_results)
 
-    except Exception as e:
-        st.error(f"❌ Error processing file: {e}")
+        st.download_button("📥 Download Predictions", df_results.to_csv(index=False), file_name="predictions.csv")
+    else:
+        st.error("❌ Dataset must contain both 'NAME' and 'Final Status' columns.")
 else:
-    st.info("ℹ Please upload your dataset to begin.")
+    st.info("ℹ Upload your dataset to get started.")
