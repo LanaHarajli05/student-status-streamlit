@@ -1,8 +1,8 @@
-streamlit
 pandas
-numpy
+streamlit
+scikit-learn
 matplotlib
 seaborn
-scikit-learn
-openpyxl
+xgboost
+
 
