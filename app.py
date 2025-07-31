@@ -101,10 +101,10 @@ if uploaded_file:
         rec = recall_score(y_test, y_pred, average="weighted", zero_division=0)
         f1 = f1_score(y_test, y_pred, average="weighted", zero_division=0)
 
-        st.write(f"*Accuracy:* {acc:.2f}")
-        st.write(f"*Precision:* {prec:.2f}")
-        st.write(f"*Recall:* {rec:.2f}")
-        st.write(f"*F1 Score (Recommended):* {f1:.2f}")
+        st.write(f"**Accuracy:** {acc:.2f}")
+        st.write(f"**Precision:** {prec:.2f}")
+        st.write(f"**Recall:** {rec:.2f}")
+        st.write(f"**F1 Score (Recommended):** {f1:.2f}")
 
         st.markdown("#### 📄 Classification Report")
         report_df = pd.DataFrame(classification_report(y_test, y_pred, target_names=le_target.classes_, output_dict=True)).T
@@ -125,3 +125,4 @@ if uploaded_file:
 
     else:
         st.error("❌ Dataset must contain both 'NAME' and 'Final Status' columns.")
+
