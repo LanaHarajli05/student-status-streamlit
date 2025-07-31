@@ -106,7 +106,7 @@ if uploaded_file:
             # Encode target
             try:
                 label_encoder = LabelEncoder()
-                y_encoded = label_encoder.fit_transform(y)
+                y_encoded = label_encoder.fit_transform(y.astype(str)
             except Exception as e:
                 st.error(f"Label Encoding Error: {e}")
                 st.stop()
