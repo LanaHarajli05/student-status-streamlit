@@ -31,7 +31,15 @@ if uploaded_file:
         df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
 
         # Confirm required columns
-        if "NAME" not in df.columns or "Final Status" not in df.columns:
+        # Clean and normalize column names
+    df.columns = df.columns.str.strip().str.lower()
+
+# Check if required columns exist (in lowercase)
+if "name" not in df.columns or "final status" not in df.columns:
+    st.error("❌ Dataset must contain both 'NAME' and 'Final Status' columns.")
+else:
+    # Rename to standard casing for consistency
+    df.rename(columns={"name": "NAME", "final status": "Final Status"}, inplace=True)
             st.error("❌ Dataset must contain both 'NAME' and 'Final Status' columns.")
         else:
             st.header("📊 Exploratory Data Analysis")
