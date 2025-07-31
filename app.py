@@ -9,7 +9,7 @@ from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 
-# Try importing XGBoost
+# Try to load XGBoost
 try:
     from xgboost import XGBClassifier
     xgb_available = True
@@ -18,99 +18,99 @@ except ImportError:
 
 st.set_page_config(page_title="🎓 Student Status Predictor", layout="wide")
 st.title("🎓 Predict Final Student Status (Capstone App)")
-st.markdown("This app performs EDA and predicts student outcomes: **Active**, **Dropped**, **In-Active**, or **Graduated**.")
 
-# Load EDA + Modeling data
-@st.cache_data
-def load_data():
-    eda_df = pd.read_csv("eda_clean.csv")
-    model_df = pd.read_csv("model_clean.csv")
-    return eda_df, model_df
+uploaded_file = st.file_uploader("📂 Upload the Excel file", type=["xlsx"])
+if uploaded_file:
+    try:
+        # Load Excel sheets directly
+        all_enrolled = pd.read_excel(uploaded_file, sheet_name='All Enrolled')
+        all_enrolled2 = pd.read_excel(uploaded_file, sheet_name='All Enrolled (2)')
 
-eda_df, model_df = load_data()
+        # Clean column names
+        all_enrolled.columns = all_enrolled.columns.str.strip().str.lower()
+        all_enrolled2.columns = all_enrolled2.columns.str.strip().str.lower()
 
-# ------------------------------------------
-# SECTION 1: EDA on All Enrolled
-# ------------------------------------------
-st.header("📊 Exploratory Data Analysis (EDA)")
+        # --- EDA Section ---
+        st.header("📊 Exploratory Data Analysis (All Enrolled Sheet)")
+        eda_df = all_enrolled.copy()
 
-st.subheader("🎯 Gender Distribution")
-st.bar_chart(eda_df['gender'].value_counts())
+        eda_df = eda_df.loc[:, eda_df.notna().mean() > 0.5]
+        eda_df = eda_df.dropna()
 
-st.subheader("🏫 University Distribution")
-st.bar_chart(eda_df['university'].value_counts())
+        if 'gender' in eda_df.columns:
+            st.subheader("🎯 Gender Distribution")
+            st.bar_chart(eda_df['gender'].value_counts())
 
-st.subheader("🧠 Major Distribution")
-st.bar_chart(eda_df['major'].value_counts())
+        if 'university' in eda_df.columns:
+            st.subheader("🏫 University Distribution")
+            st.bar_chart(eda_df['university'].value_counts())
 
-if 'age' in eda_df.columns:
-    st.subheader("📈 Age Distribution")
-    plt.figure(figsize=(6, 3))
-    sns.histplot(eda_df['age'], bins=15, kde=True)
-    st.pyplot(plt.gcf())
+        if 'major' in eda_df.columns:
+            st.subheader("🧠 Major Distribution")
+            st.bar_chart(eda_df['major'].value_counts())
 
-st.subheader("🔥 Correlation Heatmap (Numerical Only)")
-numeric_eda = eda_df.select_dtypes(include=['int64', 'float64'])
-if not numeric_eda.empty:
-    plt.figure(figsize=(6, 4))
-    sns.heatmap(numeric_eda.corr(), annot=True, cmap='coolwarm')
-    st.pyplot(plt.gcf())
-else:
-    st.info("No numeric fields found.")
+        if 'age' in eda_df.columns:
+            st.subheader("📈 Age Distribution")
+            plt.figure()
+            sns.histplot(eda_df['age'], bins=15, kde=True)
+            st.pyplot(plt.gcf())
 
-# ------------------------------------------
-# SECTION 2: Modeling on All Enrolled (2)
-# ------------------------------------------
-st.header("🤖 Student Final Status Prediction")
+        st.subheader("🔥 Correlation Heatmap")
+        numeric_eda = eda_df.select_dtypes(include=['int64', 'float64'])
+        if not numeric_eda.empty:
+            plt.figure(figsize=(6, 4))
+            sns.heatmap(numeric_eda.corr(), annot=True, cmap='coolwarm')
+            st.pyplot(plt.gcf())
+        else:
+            st.info("No numeric fields available.")
 
-# Clean and encode features
-X = model_df.drop(columns=['name', 'email', 'final status'], errors='ignore')
-y = model_df['final status']
-X_encoded = pd.get_dummies(X)
-le = LabelEncoder()
-y_encoded = le.fit_transform(y)
+        # --- Modeling Section ---
+        st.header("🤖 Predict Student Final Status (All Enrolled 2 Sheet)")
+        df = all_enrolled2.copy()
+        df = df[['name', 'email', 'gender', 'age', 'university', 'major', 'employment', 'final status']]
+        df = df.dropna()
 
-# Match columns post encoding
-X_encoded, y_encoded = X_encoded.align(X_encoded, join='inner', axis=1)
-X_train, X_test, y_train, y_test = train_test_split(X_encoded, y_encoded, test_size=0.2, random_state=42)
+        X = df.drop(columns=['name', 'email', 'final status'], errors='ignore')
+        y = df['final status']
+        X_encoded = pd.get_dummies(X)
+        le = LabelEncoder()
+        y_encoded = le.fit_transform(y)
 
-# Model selection
-model_choice = st.selectbox("Choose Model", ["Logistic Regression", "Random Forest"] + (["XGBoost"] if xgb_available else []))
+        X_train, X_test, y_train, y_test = train_test_split(X_encoded, y_encoded, test_size=0.2, random_state=42)
 
-if model_choice == "Logistic Regression":
-    model = LogisticRegression(max_iter=1000)
-elif model_choice == "Random Forest":
-    model = RandomForestClassifier()
-elif model_choice == "XGBoost":
-    model = XGBClassifier(use_label_encoder=False, eval_metric='mlogloss')
+        model_choice = st.selectbox("Select Model", ["Logistic Regression", "Random Forest"] + (["XGBoost"] if xgb_available else []))
 
-model.fit(X_train, y_train)
-y_pred = model.predict(X_test)
+        if model_choice == "Logistic Regression":
+            model = LogisticRegression(max_iter=1000)
+        elif model_choice == "Random Forest":
+            model = RandomForestClassifier()
+        elif model_choice == "XGBoost":
+            model = XGBClassifier(use_label_encoder=False, eval_metric='mlogloss')
 
-# ------------------------------------------
-# Evaluation Metrics
-# ------------------------------------------
-st.subheader("📈 Evaluation Metrics")
-report = classification_report(y_test, y_pred, target_names=le.classes_, output_dict=True)
-report_df = pd.DataFrame(report).transpose()
-st.dataframe(report_df.style.format("{:.2f}"))
+        model.fit(X_train, y_train)
+        y_pred = model.predict(X_test)
 
-# Confusion Matrix
-st.subheader("🌀 Confusion Matrix")
-cm = confusion_matrix(y_test, y_pred)
-plt.figure(figsize=(6, 4))
-sns.heatmap(cm, annot=True, fmt='d', xticklabels=le.classes_, yticklabels=le.classes_, cmap='Blues')
-plt.xlabel("Predicted")
-plt.ylabel("Actual")
-st.pyplot(plt.gcf())
+        # Evaluation
+        st.subheader("📈 Evaluation Metrics")
+        report = classification_report(y_test, y_pred, target_names=le.classes_, output_dict=True)
+        report_df = pd.DataFrame(report).transpose()
+        st.dataframe(report_df.style.format("{:.2f}"))
 
-# ------------------------------------------
-# Prediction for All Students
-# ------------------------------------------
-st.header("📋 Final Predictions for Each Student")
+        st.subheader("🌀 Confusion Matrix")
+        cm = confusion_matrix(y_test, y_pred)
+        plt.figure(figsize=(6, 4))
+        sns.heatmap(cm, annot=True, fmt='d', xticklabels=le.classes_, yticklabels=le.classes_, cmap='Blues')
+        plt.xlabel("Predicted")
+        plt.ylabel("Actual")
+        st.pyplot(plt.gcf())
 
-all_preds = model.predict(X_encoded)
-predicted_labels = le.inverse_transform(all_preds)
-model_df["Predicted Status"] = predicted_labels
+        # Prediction for each student
+        st.header("📋 Final Predictions for Each Student")
+        all_preds = model.predict(X_encoded)
+        predicted_labels = le.inverse_transform(all_preds)
+        df["Predicted Status"] = predicted_labels
+        st.dataframe(df[["name", "final status", "Predicted Status"]])
 
-st.dataframe(model_df[["name", "final status", "Predicted Status"]])
+    except Exception as e:
+        st.error(f"Something went wrong: {e}")
+
